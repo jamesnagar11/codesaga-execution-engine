@@ -1,0 +1,20 @@
+{
+  "name": "execution-engine",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "start": "bun ./dist/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "child_process": "^1.0.2",
+    "redis": "^6.2.1"
+  }
+}

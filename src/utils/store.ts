@@ -1,0 +1,12 @@
+export const map = new Map<string, string>();
+map.set('two-sum', 'TwoSum');
+map.set('add-two-numbers', 'AddTwoNumbers');
+map.set('longest-common-prefix', 'LongestCommonPrefix');
+map.set('median-of-two-sorted-arrays', 'MedianOfTwoSortedArrays');
+map.set('regular-expression-matching', 'RegularExpressionMatching');
+map.set('longest-substring-without-repeating-characters', 'LongestSubstringWithoutRepeatingCharacters');
+map.set('letters-combinations-of-a-phone-number', 'LettersCombinationsOfANumber');
+map.set('container-with-most-water', 'ContainerWithMostWater');
+map.set('palindrome-number', 'PalindromeNumber');
+map.set('remove-nth-node-from-end-of-list', 'RemoveNthNodeFromEndOfList');
+map.set('longest-palindromic-substring', 'LongestPalindromicSubstring');
