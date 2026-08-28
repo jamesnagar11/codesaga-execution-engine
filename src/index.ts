@@ -8,13 +8,13 @@ async function startWorker() {
     try {
         await redisClient.connect();
         await publisher.connect();
-        
+
         setInterval(() => { redisClient.ping().catch(console.error) }, 60000);
         setInterval(() => { publisher.ping().catch(console.error) }, 60000);
 
-        await initGroup(redisClient, process.env.STREAM_KEY! , process.env.CONSUMER_GROUP!);
+        await initGroup(redisClient, process.env.STREAM_KEY!, process.env.CONSUMER_GROUP!);
 
-        while(true) {
+        while (true) {
             console.log('Worker Waiting for new code...');
 
             const response = await redisClient.xReadGroup(
@@ -30,10 +30,10 @@ async function startWorker() {
                 }
             );
 
-            if(response && response.length > 0 ) {
-                for(const res of response) {
+            if (response && response.length > 0) {
+                for (const res of response) {
                     const messages = res.messages;
-                    for(const message of messages) {
+                    for (const message of messages) {
                         const payload = message.message as MessageType;
                         await processor(payload, publisher);
                         await redisClient.xAck(process.env.STREAM_KEY!, process.env.CONSUMER_GROUP!, message.id);
