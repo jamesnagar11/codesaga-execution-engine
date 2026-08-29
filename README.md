@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔥 codesaga-engine — Code Execution Engine
+# 🔥 codesaga-execution-engine — Code Execution Engine
 
 **Sandboxed multi-language code execution at scale**  
 *Java · C++ · Python · Redis Streams consumer · Docker-isolated · KEDA autoscaled*
@@ -24,52 +24,58 @@
 | Module | Repo | Role | Docker Image |
 |--------|------|------|--------------|
 | ① Client | [`codesaga`](https://github.com/jamesnagar11/codesaga) | Next.js Client — UI, Auth, Problem Pages | `jamesnagar/codesaga-client` |
-| ② Socket Gateway | [`codesaga-ws`](https://github.com/jamesnagar11/codesaga-ws) | WebSocket server, Redis Streams producer, Pub/Sub subscriber | `jamesnagar/codesaga-ws` |
-| **③ You are here** | [`codesaga-engine`](https://github.com/jamesnagar11/codesaga-engine) | Sandboxed code runner (Java, C++, Python) | `jamesnagar/codesaga-engine` |
-| ④ Bulk DB Executor | [`bulk-executor`](https://github.com/jamesnagar11/bulk-executor) | Batches up to 100 DB writes in a single SQL statement | `jamesnagar/codesaga-bulk` |
-| ⑤ Cron Sweeper | [`bulk-executor-janitor`](https://github.com/jamesnagar11/bulk-executor-janitor) | Auto-claims stale jobs, reconciles Redis memory | `jamesnagar/codesaga-cron` |
+| ② Socket Gateway | [`codesaga-websocket-server`](https://github.com/jamesnagar11/codesaga-websocket-server) | WebSocket server, Redis Streams producer, Pub/Sub subscriber | `jamesnagar/codesaga-ws` |
+| **③ You are here** | [`codesaga-execution-engine`](https://github.com/jamesnagar11/codesaga-execution-engine) | Sandboxed code runner (Java, C++, Python) | `jamesnagar/codesaga-engine` |
+| ④ Bulk DB Executor | [`codesaga-bulk-executor`](https://github.com/jamesnagar11/codesaga-bulk-executor) | Batches up to 100 DB writes in a single SQL statement | `jamesnagar/codesaga-bulk` |
+| ⑤ Cron Sweeper | [`codesaga-bulk-master`](https://github.com/jamesnagar11/codesaga-bulk-master) | Auto-claims stale jobs, reconciles Redis memory | `jamesnagar/codesaga-cron` |
 | ⚙️ GitOps Config | [`staging-ops`](https://github.com/jamesnagar11/staging-ops) | Kubernetes manifests managed by ArgoCD | — |
 
 ---
 
-## 🏗️ Full System Architecture
+## 🏗️ Full System Architecture — Interactive Diagram
+
+> **👉 [Open Full Interactive Diagram →](https://jamesnagar11.github.io/codesaga/diagram/)**
+>
+> *Pan, zoom, shift arrows, hover nodes for details — switch to "③ Exec Engine" tab for this module's specific flow*
+
+<div align="center">
+
+[![Architecture Diagram](https://img.shields.io/badge/🔍_View_Interactive_Diagram-f472b6?style=for-the-badge&logoColor=white)](https://jamesnagar11.github.io/codesaga/diagram/)
+
+</div>
+
+---
+
+### 📐 Full System Overview
 
 ```
-                           ┌─────────────────────────────────────────────────────────────────────┐
-                           │                     Kubernetes Cluster (k8s)                         │
-                           │                                                                       │
- ┌──────────┐              │  ┌────────────────────┐     Redis Stream: events:code               │
- │  Users   │─────────────►│  │  Socket Servers     │──────────────────────────┐                 │
- └──────────┘              │  └────────────────────┘                           │                 │
-                           │                                                    ▼                 │
-                           │                                       ┌────────────────────────┐    │
-                           │                                       │  ★ Execution Engine     │    │
-                           │                                       │    Workers (THIS)        │    │
-                           │                                       │  KEDA: scale at lag ≥ 50│    │
-                           │                                       │                          │    │
-                           │                                       │  Per job:                │    │
-                           │                                       │  1. Pull from stream      │    │
-                           │                                       │  2. Write code to /fd     │    │
-                           │                                       │  3. Compile (javac/g++)   │    │
-                           │                                       │  4. Run with 3.5s timeout │    │
-                           │                                       │  5. Compare vs test cases │    │
-                           │                                       │  6. Publish result via    │    │
-                           │                                       │     Redis Pub/Sub         │    │
-                           │                                       └────────────────────────--┘    │
-                           └─────────────────────────────────────────────────────────────────────┘
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     ☸  Kubernetes Cluster (k8s)                             ║
+║                                                                              ║
+║  Users ──► NGINX Ingress ──► ① Next.js + ② Socket Gateway                 ║
+║                                     │                                        ║
+║                            Redis Stream: events:code                         ║
+║                                     │                                        ║
+║                            ┌────────▼──────────────────────────────┐        ║
+║                            │  ★ ③ Execution Engine Workers (THIS)  │        ║
+║                            │  KEDA: scale at Redis lag ≥ 50        │        ║
+║                            │                                        │        ║
+║                            │  1. xReadGroup from stream             │        ║
+║                            │  2. Write code to /JavaFd /CppFd       │        ║
+║                            │  3. Compile (javac / g++)              │        ║
+║                            │  4. Run vs tester (3.5s TLE)           │        ║
+║                            │  5. Publish result → Pub/Sub           │        ║
+║                            │  6. xAck + xDel                        │        ║
+║                            └────────────────────────────────────────┘        ║
+║                                     │ PUBLISH code:result:{srv-uuid}         ║
+║                                     ▼                                        ║
+║                            ② Socket Server → User (codeResponse)            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
 
-## 📋 What This Module Does
-
-`codesaga-engine` is the **heart of the judge system** — the worker that actually compiles and runs user code. It is a stateless, containerized worker that picks jobs from a Redis Stream, executes them in an isolated filesystem directory, runs the code against problem-specific test cases, and publishes the verdict back via Redis Pub/Sub.
-
-> **Security note:** Each worker runs inside its own Docker container. If a user submits malicious code that corrupts the process, only that container is affected — Kubernetes restarts it automatically. The host machine is never touched.
-
----
-
-## 🔄 Execution Pipeline (This Module)
+### 🔍 This Module — Execution Pipeline
 
 ```
 Redis Stream: codesaga:events:code
@@ -77,14 +83,14 @@ Redis Stream: codesaga:events:code
           │  xReadGroup (blocking, COUNT: 2, BLOCK: 3s)
           ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                 Execution Engine Worker                        │
+│                 ③ Execution Engine Worker                      │
 │                                                                │
 │  1. Parse payload: { language, code, problemTitle, ... }       │
 │                                                                │
 │  2. Write user code to local file directory:                   │
-│     Java  → JavaFd/Solution.java                               │
-│     C++   → CppFd/Solution.cpp  (auto-includes bits/stdc++.h) │
-│     Python→ PythonFd/Solution.py                               │
+│     Java   → JavaFd/Solution.java                              │
+│     C++    → CppFd/Solution.cpp  (auto-includes bits/stdc++.h) │
+│     Python → PythonFd/Solution.py                              │
 │                                                                │
 │  3. Compile (Java: javac, C++: g++, Python: skip)              │
 │     → On Compilation Error: publish CE result, return          │
@@ -93,8 +99,8 @@ Redis Stream: codesaga:events:code
 │     (tester file lives in the same /Fd folder per language)    │
 │     Timeout: 3500ms → TLE if exceeded                          │
 │                                                                │
-│  5. Capture stdout / stderr                                     │
-│     Verdict: Accepted | Wrong Answer | TLE | CE | Runtime Error│
+│  5. Capture stdout / stderr                                    │
+│     Verdict: Accepted | Wrong Answer | TLE | CE | Runtime Error │
 │                                                                │
 │  6. Publish result → Redis Pub/Sub channel:                    │
 │     "code:result:{subscriber_id}"                              │
@@ -110,6 +116,14 @@ Socket Server → socket.to(socketId).emit('codeResponse')
           ▼
 User sees real-time verdict in browser ✅
 ```
+
+---
+
+## 📋 What This Module Does
+
+`codesaga-execution-engine` is the **heart of the judge system** — the worker that actually compiles and runs user code. It is a stateless, containerized worker that picks jobs from a Redis Stream, executes them in an isolated filesystem directory, runs the code against problem-specific test cases, and publishes the verdict back via Redis Pub/Sub.
+
+> **Security note:** Each worker runs inside its own Docker container. If a user submits malicious code that corrupts the process, only that container is affected — Kubernetes restarts it automatically. The host machine is never touched.
 
 ---
 
@@ -200,8 +214,8 @@ execution-engine/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/jamesnagar11/codesaga-engine.git
-cd codesaga-engine
+git clone https://github.com/jamesnagar11/codesaga-execution-engine.git
+cd codesaga-execution-engine
 
 # 2. Install dependencies
 bun install
