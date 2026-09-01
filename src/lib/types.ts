@@ -32,6 +32,7 @@ export type codeRequest = {
   problemURL: string;
   difficulty: string;
   topics: string[] | undefined;
+  token: string;
 }
 
 export type CodeCallback = {status: string, language: string, code: string, socketId: string,  problemTitle: string, runnerType: string, submissionTime: Date, userId: string, problemURL: string, difficulty: string, topics: string[] | undefined}
